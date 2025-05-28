@@ -1,62 +1,62 @@
-import 'dotenv/config';
+import express from 'express';
 import { google } from 'googleapis';
+import cron from 'node-cron';
+import dotenv from 'dotenv';
 import axios from 'axios';
 
-const API_KEY = process.env.API_KEY;
-const API_SECRET = process.env.API_SECRET;
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
-const CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
-const PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+dotenv.config();
 
-const auth = new google.auth.JWT(
-  CLIENT_EMAIL,
-  null,
-  PRIVATE_KEY,
-  ['https://www.googleapis.com/auth/spreadsheets']
-);
+const app = express();
+const port = process.env.PORT || 3000;
 
-const sheets = google.sheets({ version: 'v4', auth });
+// Mensaje de estado para UptimeRobot
+app.get('/', (req, res) => {
+  res.send('✅ El bot está funcionando correctamente.');
+});
 
-async function logToSheet(data) {
-  const values = [[
-    new Date().toISOString(),
-    data.symbol,
-    data.action,
-    data.amount,
-    data.price
-  ]];
-
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'Operaciones!A1',
-    valueInputOption: 'USER_ENTERED',
-    resource: { values }
-  });
-}
-
-async function checkPrices() {
+// Función para agregar datos a Google Sheets
+async function agregarDatosASheets() {
   try {
-    const symbols = ['XRP', 'SHIB', 'FET', 'CGPT'];
-    for (const symbol of symbols) {
-      const response = await axios.get(`https://api.mexc.com/api/v3/ticker/price?symbol=${symbol}USDT`);
-      const currentPrice = parseFloat(response.data.price);
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        type: process.env.GOOGLE_TYPE,
+        project_id: process.env.GOOGLE_PROJECT_ID,
+        private_key_id: process.env.GOOGLE_PRIVATE_KEY_ID,
+        private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        client_email: process.env.GOOGLE_CLIENT_EMAIL,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+      },
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
 
-      // Simulación simple
-      const decision = Math.random() > 0.5 ? 'BUY' : 'SELL';
-      const amount = 5;
-      const action = {
-        symbol: symbol,
-        action: decision,
-        amount: amount,
-        price: currentPrice
-      };
+    const sheets = google.sheets({ version: 'v4', auth });
 
-      console.log(`Operación: ${decision} ${amount} ${symbol} a ${currentPrice}`);
-      await logToSheet(action);
-    }
+    const response = await axios.get(`https://api.mexc.com/api/v3/ticker/price?symbol=SHIBUSDT`);
+    const precio = parseFloat(response.data.price);
+    const timestamp = new Date().toISOString();
+
+    const sheetResponse = await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.SHEET_ID,
+      range: 'Hoja1!A1',
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[timestamp, 'SHIBA', precio]],
+      },
+    });
+
+    console.log('📥 Precio agregado:', precio, '⏰', timestamp);
   } catch (error) {
-    console.error('Error al comprobar precios:', error.message);
+    console.error('❌ Error al añadir datos a Sheets:', error);
   }
 }
 
-checkPrices();
+// Ejecutar cada 60 minutos
+cron.schedule('0 * * * *', () => {
+  console.log('🚀 Ejecutando tarea programada...');
+  agregarDatosASheets();
+});
+
+// Iniciar servidor
+app.listen(port, () => {
+  console.log(`✅ Servidor corriendo en el puerto ${port}`);
+});
