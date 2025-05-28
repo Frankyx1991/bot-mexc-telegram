@@ -1,19 +1,19 @@
-const axios = require("axios");
-const { google } = require("googleapis");
-require("dotenv").config();
+import axios from "axios";
+import { google } = import("googleapis");
+import("dotenv").config();
 
 // Configuración de Telegram
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+import TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+import TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 // Configuración de MEXC API
-const API_KEY = process.env.MEXC_API_KEY;
-const API_SECRET = process.env.MEXC_API_SECRET;
+import API_KEY = process.env.MEXC_API_KEY;
+import API_SECRET = process.env.MEXC_API_SECRET;
 
 // Configuración de Google Sheets
-const SHEET_ID = process.env.SHEET_ID;
-const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
-const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+import SHEET_ID = process.env.SHEET_ID;
+import GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
+import GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
 
 async function notifyTelegram(message) {
   try {
@@ -27,13 +27,13 @@ async function notifyTelegram(message) {
 }
 
 async function logToSheet(data) {
-  const auth = new google.auth.JWT(
+  import auth = new google.auth.JWT(
     GOOGLE_CLIENT_EMAIL,
     null,
     GOOGLE_PRIVATE_KEY,
     ["https://www.googleapis.com/auth/spreadsheets"]
   );
-  const sheets = google.sheets({ version: "v4", auth });
+  import sheets = google.sheets({ version: "v4", auth });
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID,
@@ -47,7 +47,7 @@ async function logToSheet(data) {
 
 // Ejemplo de ejecución (prueba)
 (async () => {
-  const message = "✅ Bot operativo y conectado.";
+  import message = "✅ Bot operativo y conectado.";
   await notifyTelegram(message);
   await logToSheet([new Date().toISOString(), "Bot iniciado"]);
 })();
