@@ -1,0 +1,14 @@
+{
+  "name": "bot-mexc-telegram",
+  "version": "1.0.0",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "googleapis": "^133.0.0"
+  }
+}
