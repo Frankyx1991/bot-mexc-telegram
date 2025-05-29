@@ -1,12 +1,17 @@
-MEXC_API_KEY=
-MEXC_SECRET_KEY=
-GOOGLE_SHEET_ID=
-GOOGLE_CLIENT_EMAIL=
-GOOGLE_PRIVATE_KEY="
-PORT=
-SHEET_ID=
-GOOGLE_TYPE=
-GOOGLE_PROJECT_ID=
-GOOGLE_PRIVATE_KEY_ID=
-GOOGLE_CLIENT_EMAIL=
-GOOGLE_CLIENT_ID=
+# Configuración de Google Sheets
+GOOGLE_TYPE=service_account
+GOOGLE_PROJECT_ID=your_project_id
+GOOGLE_PRIVATE_KEY_ID=your_private_key_id
+GOOGLE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\\nYOUR_PRIVATE_KEY\\n-----END PRIVATE KEY-----\\n
+GOOGLE_CLIENT_EMAIL=your_service_account_email@project.iam.gserviceaccount.com
+GOOGLE_CLIENT_ID=your_client_id
+
+# ID de la hoja de cálculo de Google Sheets
+SHEET_ID=your_spreadsheet_id
+
+# Configuración de MEXC
+MEXC_API_KEY=your_mexc_api_key
+MEXC_API_SECRET=your_mexc_secret_key
+
+# Puerto para el servidor
+PORT=3000
