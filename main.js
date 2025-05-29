@@ -36,7 +36,7 @@ async function agregarDatosASheets() {
     const timestamp = new Date().toISOString();
 
     const sheetResponse = await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.SHEET_ID,
+      spreadsheetId: process.env.SPREADSHEET_ID, // ✅ Corregido aquí
       range: 'Hoja1!A1',
       valueInputOption: 'USER_ENTERED',
       requestBody: {
