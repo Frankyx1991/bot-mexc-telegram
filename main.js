@@ -9,13 +9,13 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Mensaje de estado para UptimeRobot
+// Ruta para comprobar el estado del bot
 app.get('/', (req, res) => {
   res.send('✅ El bot está funcionando correctamente.');
 });
 
-// Función para agregar datos a Google Sheets
-async function agregarDatosASheets() {
+// Función para registrar datos en Google Sheets
+async function registrarPrecioEnSheets() {
   try {
     const auth = new google.auth.GoogleAuth({
       credentials: {
@@ -31,32 +31,35 @@ async function agregarDatosASheets() {
 
     const sheets = google.sheets({ version: 'v4', auth });
 
-    const response = await axios.get(`https://api.mexc.com/api/v3/ticker/price?symbol=SHIBUSDT`);
-    const precio = parseFloat(response.data.price);
+    const symbol = process.env.MEXC_PAIR || 'SHIBUSDT';
+    const apiUrl = `https://api.mexc.com/api/v3/ticker/price?symbol=${symbol}`;
+
+    const { data } = await axios.get(apiUrl);
+    const precio = parseFloat(data.price);
     const timestamp = new Date().toISOString();
 
-    const sheetResponse = await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.SPREADSHEET_ID, // ✅ Corregido aquí
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.SHEET_ID,
       range: 'Hoja1!A1',
       valueInputOption: 'USER_ENTERED',
       requestBody: {
-        values: [[timestamp, 'SHIBA', precio]],
+        values: [[timestamp, symbol, precio]],
       },
     });
 
-    console.log('📥 Precio agregado:', precio, '⏰', timestamp);
+    console.log(`📈 Registrado: ${symbol} a ${precio} en ${timestamp}`);
   } catch (error) {
-    console.error('❌ Error al añadir datos a Sheets:', error);
+    console.error('❌ Error registrando en Google Sheets:', error.message);
   }
 }
 
-// Ejecutar cada 60 minutos
+// Ejecutar cada hora en punto
 cron.schedule('0 * * * *', () => {
-  console.log('🚀 Ejecutando tarea programada...');
-  agregarDatosASheets();
+  console.log('🕒 Ejecutando tarea programada...');
+  registrarPrecioEnSheets();
 });
 
-// Iniciar servidor
+// Iniciar el servidor
 app.listen(port, () => {
-  console.log(`✅ Servidor corriendo en el puerto ${port}`);
+  console.log(`🚀 Servidor iniciado en http://localhost:${port}`);
 });
