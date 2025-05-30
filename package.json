@@ -1,7 +1,7 @@
 {
   "name": "xrp-bot",
   "version": "1.0.0",
-  "description": "Bot para operar XRP en MEXC con órdenes de mercado y alertas por Telegram",
+  "description": "Bot de trading automático para XRP en MEXC",
   "main": "main.js",
   "type": "module",
   "scripts": {
