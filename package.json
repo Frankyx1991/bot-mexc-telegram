@@ -1,14 +1,15 @@
 {
   "name": "xrp-bot",
   "version": "1.0.0",
-  "type": "module",
+  "description": "Bot automático de trading en MEXC para XRP",
   "main": "main.js",
+  "type": "module",
   "scripts": {
     "start": "node main.js"
   },
   "dependencies": {
     "axios": "^1.6.8",
-    "dotenv": "^16.4.5",
-    "node-cron": "^3.0.3"
+    "cron": "^2.3.0",
+    "dotenv": "^16.3.1"
   }
 }
