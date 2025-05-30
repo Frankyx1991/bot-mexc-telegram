@@ -1,3 +1,6 @@
-MEXC_KEY=tu_api_key
-MEXC_SECRET=tu_secret_key
+# Puerto para Railway (no modificar)
 PORT=3000
+
+# Claves de API de MEXC (REEMPLAZAR antes de desplegar)
+MEXC_KEY=tu_clave_api_mexc
+MEXC_SECRET=tu_clave_secreta_mexc
