@@ -1,10 +1,18 @@
 {
-  "build": {
-    "env": {
-      "NODE_ENV": "production"
-    }
+  "name": "bot-mexc-telegram",
+  "version": "1.0.0",
+  "description": "Bot inteligente para operar automáticamente en MEXC con señales de TradingView",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "start": "node main.js"
   },
-  "deploy": {
-    "startCommand": "node main.js"
+  "keywords": ["mexc", "tradingview", "bot", "crypto", "automatizado"],
+  "author": "Frankyx1991",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.8",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
   }
 }
