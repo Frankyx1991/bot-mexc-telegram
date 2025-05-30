@@ -64,28 +64,35 @@ async function agregarDatosASheets(moneda, precio) {
 
 // main.js import express from 'express'; import crypto from 'crypto'; import axios from 'axios'; import dotenv from 'dotenv';
 
+// main.js (solo con MEXC y TradingView, sin Google Sheets)
+
+import express from 'express'; import axios from 'axios'; import crypto from 'crypto'; import dotenv from 'dotenv';
+
 dotenv.config();
 
-const app = express(); app.use(express.json());
+const app = express(); const port = process.env.PORT || 3000;
 
-const PORT = process.env.PORT || 3000; const MEXC_API_KEY = process.env.MEXC_API_KEY; const MEXC_SECRET_KEY = process.env.MEXC_SECRET_KEY;
+app.use(express.json());
 
-const PAIRS = ['XRPUSDT', 'SHIBUSDT', 'FETUSDT', 'CGPTUSDT']; const BASE_URL = 'https://api.mexc.com';
+// Firmar la solicitud para la API de MEXC function signRequest(params, secretKey) { const orderedParams = Object.keys(params) .sort() .map((key) => ${key}=${params[key]}) .join('&'); return crypto.createHmac('sha256', secretKey).update(orderedParams).digest('hex'); }
 
-function sign(queryString) { return crypto.createHmac('sha256', MEXC_SECRET_KEY).update(queryString).digest('hex'); }
+// Ejecutar una orden (compra o venta) async function ejecutarOrden(symbol, side, quantity) { const timestamp = Date.now(); const params = { symbol, side, type: 'MARKET', quantity, timestamp, };
 
-async function placeOrder(symbol, side) { try { const timestamp = Date.now(); const params = symbol=${symbol}&side=${side}&type=MARKET&quantity=${getQuantity(symbol)}&timestamp=${timestamp}; const signature = sign(params); const finalParams = ${params}&signature=${signature};
+const signature = signRequest(params, process.env.MEXC_SECRET_KEY); const query = new URLSearchParams({ ...params, signature }).toString();
 
-const response = await axios.post(`${BASE_URL}/api/v3/order?${finalParams}`, {}, {
-  headers: {
-    'X-MEXC-APIKEY': MEXC_API_KEY,
-    'Content-Type': 'application/json'
-  }
-});
+try { const response = await axios.post( https://api.mexc.com/api/v3/order?${query}, {}, { headers: { 'X-MEXC-APIKEY': process.env.MEXC_API_KEY, 'Content-Type': 'application/json', }, } ); console.log(✅ Orden ${side} ejecutada:, response.data); } catch (error) { console.error('❌ Error al ejecutar la orden:', error.response?.data || error.message); } }
 
-console.log(`✅ ${side} order placed for ${symbol}`, response.data);
+// Webhook desde TradingView app.post('/webhook', async (req, res) => { const { symbol, side, quantity } = req.body;
 
-} catch (error) { console.error(❌ Error placing ${side} order for ${symbol}:, error?.response?.data || error.message); } }
+if (!symbol || !side || !quantity) { return res.status(400).send('❌ Faltan datos: symbol, side o quantity.'); }
+
+await ejecutarOrden(symbol, side.toUpperCase(), quantity); res.send('📩 Orden procesada'); });
+
+app.get('/', (req, res) => { res.send('✅ Bot MEXC conectado y esperando señales.'); });
+
+app.listen(port, '0.0.0.0', () => { console.log(🚀 Servidor escuchando en puerto ${port}); });
+
+error.message); } }
 
 function getQuantity(symbol) { switch (symbol) { case 'XRPUSDT': return 18;     // Ajustar cantidad según balance case 'SHIBUSDT': return 700000; case 'FETUSDT': return 48; case 'CGPTUSDT': return 30; default: return 0; } }
 
