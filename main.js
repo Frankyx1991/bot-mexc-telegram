@@ -1,77 +1,64 @@
-
 import express from 'express';
 import dotenv from 'dotenv';
 import axios from 'axios';
 
 dotenv.config();
-const app = express();
-const port = process.env.PORT || 3000;
 
+const app = express();
 app.use(express.json());
 
-const API_KEY = process.env.MEXC_API_KEY;
-const API_SECRET = process.env.MEXC_API_SECRET;
+const PORT = process.env.PORT || 3000;
 
-const BASE_URL = 'https://api.mexc.com';
+// Estado para verificar si el bot está activo
+app.get('/', (req, res) => {
+  res.send('✅ Bot MEXC activo y esperando señales de TradingView.');
+});
 
-// Función para enviar orden de mercado
-async function enviarOrden(symbol, side) {
+// Ejecutar orden market en MEXC
+async function ejecutarOrden(par, tipoOperacion, cantidad) {
   try {
+    const endpoint = '/api/v3/order';
     const timestamp = Date.now();
-    const params = {
-      symbol,
-      side: side.toUpperCase(),
+    const data = {
+      symbol: par,
+      side: tipoOperacion,
       type: 'MARKET',
+      quantity: cantidad,
       timestamp
     };
 
-    const queryString = new URLSearchParams(params).toString();
-    const signature = await createSignature(queryString);
+    // Generar firma con tu clave secreta
+    const query = new URLSearchParams(data).toString();
+    const signature = new URLSearchParams({
+      signature: crypto.createHmac('sha256', process.env.MEXC_SECRET)
+        .update(query)
+        .digest('hex')
+    }).toString();
 
-    const response = await axios.post(`${BASE_URL}/api/v3/order`, null, {
-      params: { ...params, signature },
+    const url = `https://api.mexc.com${endpoint}?${query}&${signature}`;
+    const response = await axios.post(url, null, {
       headers: {
-        'X-MEXC-APIKEY': API_KEY
+        'X-MEXC-APIKEY': process.env.MEXC_KEY
       }
     });
 
-    console.log(`✅ Orden ${side} ejecutada para ${symbol}`, response.data);
-    return response.data;
+    console.log(`✅ Orden ${tipoOperacion} ejecutada en ${par}:`, response.data);
   } catch (error) {
-    console.error(`❌ Error al ejecutar orden ${side} para ${symbol}:`, error.response?.data || error.message);
+    console.error(`❌ Error ejecutando orden ${tipoOperacion} en ${par}:`, error.response?.data || error.message);
   }
 }
 
-// Crear firma con API_SECRET
-async function createSignature(queryString) {
-  const crypto = await import('crypto');
-  return crypto.createHmac('sha256', API_SECRET).update(queryString).digest('hex');
-}
-
-// Ruta webhook para recibir señales de TradingView
+// Webhook desde TradingView
 app.post('/webhook', async (req, res) => {
-  const { action, symbol } = req.body;
-
-  if (!action || !symbol) {
-    return res.status(400).send('❌ Parámetros faltantes');
+  const { par, tipo, cantidad } = req.body;
+  if (!par || !tipo || !cantidad) {
+    return res.status(400).send('❌ Faltan datos en la señal.');
   }
 
-  console.log(`📩 Señal recibida: ${action.toUpperCase()} ${symbol}`);
-
-  if (action === 'buy' || action === 'sell') {
-    await enviarOrden(symbol, action);
-    return res.status(200).send('✅ Orden procesada');
-  }
-
-  return res.status(400).send('❌ Acción no reconocida');
+  await ejecutarOrden(par, tipo.toUpperCase(), cantidad);
+  res.send('✅ Señal recibida y orden ejecutada.');
 });
 
-// Ruta base para comprobar funcionamiento
-app.get('/', (req, res) => {
-  res.send('✅ Bot conectado y esperando señales de TradingView');
-});
-
-app.listen(port, '0.0.0.0', () => {
-  console.log(`🚀 Servidor activo en puer
-    to ${port}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor activo en puerto ${PORT}`);
 });
