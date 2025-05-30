@@ -1,64 +1,38 @@
-import express from 'express';
-import dotenv from 'dotenv';
-import axios from 'axios';
+// main.js definitivo sin Google Sheets ni Telegram
+
+import express from 'express'; import dotenv from 'dotenv'; import axios from 'axios'; import crypto from 'crypto'; import cron from 'node-cron';
 
 dotenv.config();
 
-const app = express();
+const app = express(); const port = process.env.PORT || 3000;
+
+const MEXC_API_KEY = process.env.MEXC_KEY; const MEXC_SECRET_KEY = process.env.MEXC_SECRET;
+
+const pares = ['SHIBUSDT', 'XRPUSDT', 'FETUSDT', 'CGPTUSDT'];
+
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
+// Respuesta de estado app.get('/', (req, res) => { res.send('✅ Bot MEXC funcionando.'); });
 
-// Estado para verificar si el bot está activo
-app.get('/', (req, res) => {
-  res.send('✅ Bot MEXC activo y esperando señales de TradingView.');
-});
+// Función para generar firma function firmar(query_string, secretKey) { return crypto.createHmac('sha256', secretKey).update(query_string).digest('hex'); }
 
-// Ejecutar orden market en MEXC
-async function ejecutarOrden(par, tipoOperacion, cantidad) {
-  try {
-    const endpoint = '/api/v3/order';
-    const timestamp = Date.now();
-    const data = {
-      symbol: par,
-      side: tipoOperacion,
-      type: 'MARKET',
-      quantity: cantidad,
-      timestamp
-    };
+// Ejecutar compra o venta market async function ejecutarOrden(tipo, simbolo) { const timestamp = Date.now(); const quantity = await calcularCantidad(simbolo);
 
-    // Generar firma con tu clave secreta
-    const query = new URLSearchParams(data).toString();
-    const signature = new URLSearchParams({
-      signature: crypto.createHmac('sha256', process.env.MEXC_SECRET)
-        .update(query)
-        .digest('hex')
-    }).toString();
+const params = symbol=${simbolo}&side=${tipo.toUpperCase()}&type=MARKET&quantity=${quantity}&timestamp=${timestamp}; const signature = firmar(params, MEXC_SECRET_KEY);
 
-    const url = `https://api.mexc.com${endpoint}?${query}&${signature}`;
-    const response = await axios.post(url, null, {
-      headers: {
-        'X-MEXC-APIKEY': process.env.MEXC_KEY
-      }
-    });
+try { const response = await axios.post( https://api.mexc.com/api/v3/order?${params}&signature=${signature}, {}, { headers: { 'X-MEXC-APIKEY': MEXC_API_KEY, }, } ); console.log(✅ Orden ${tipo} ejecutada para ${simbolo}:, response.data); } catch (error) { console.error(❌ Error al ejecutar orden ${tipo} para ${simbolo}:, error.response?.data || error.message); } }
 
-    console.log(`✅ Orden ${tipoOperacion} ejecutada en ${par}:`, response.data);
-  } catch (error) {
-    console.error(`❌ Error ejecutando orden ${tipoOperacion} en ${par}:`, error.response?.data || error.message);
-  }
-}
+// Calcular cantidad para operar 40 USDT por par (aproximadamente) async function calcularCantidad(simbolo) { try { const { data } = await axios.get(https://api.mexc.com/api/v3/ticker/price?symbol=${simbolo}); const precio = parseFloat(data.price); const cantidad = (40 / precio).toFixed(0); return cantidad; } catch (error) { console.error(❌ Error obteniendo precio de ${simbolo}:, error.message); return 0; } }
 
-// Webhook desde TradingView
-app.post('/webhook', async (req, res) => {
-  const { par, tipo, cantidad } = req.body;
-  if (!par || !tipo || !cantidad) {
-    return res.status(400).send('❌ Faltan datos en la señal.');
-  }
+// Ruta webhook para TradingView app.post('/webhook', async (req, res) => { const { action, symbol } = req.body;
 
-  await ejecutarOrden(par, tipo.toUpperCase(), cantidad);
-  res.send('✅ Señal recibida y orden ejecutada.');
-});
+if (!action || !symbol) { return res.status(400).send('Faltan campos obligatorios.'); }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor activo en puerto ${PORT}`);
-});
+if (!pares.includes(symbol)) { return res.status(400).send('Par no permitido.'); }
+
+if (action.toUpperCase() === 'BUY' || action.toUpperCase() === 'SELL') { await ejecutarOrden(action.toUpperCase(), symbol); res.send(✅ Orden ${action} recibida para ${symbol}); } else { res.status(400).send('Acción no válida'); } });
+
+// Cron opcional: ejecutar automáticamente cada hora cron.schedule('0 * * * *', async () => { console.log('⏰ Ejecutando revisión automática...'); for (const simbolo of pares) { // lógica para decidir si comprar/vender puede ir aquí } });
+
+// Iniciar servidor app.listen(port, '0.0.0.0', () => { console.log(🚀 Bot corriendo en puerto ${port}); });
+
