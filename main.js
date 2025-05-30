@@ -21,11 +21,11 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-  res.send('✅ Bot activo y funcionando.');
+  res.send('✅ Bot XRP activo y funcionando.');
 });
 
 app.listen(port, () => {
-  console.log(`🌐 Servidor escuchando en el puerto ${port}`);
+  console.log(`🌐 Servidor escuchando en puerto ${port}`);
 });
 
 function getSignature(queryString) {
@@ -78,7 +78,7 @@ async function evaluarYOperar() {
     await hacerOrden('BUY', cantidad);
     historial.push({ tipo: 'compra', precioCompra: precio, cantidad: parseFloat(cantidad), vendida: false });
     capitalTotal -= 15;
-    await enviarTelegram(`🟢 Compra aleatoria realizada a ${precio}`);
+    await enviarTelegram(`🟢 Compra aleatoria a ${precio}`);
   } else if (decision === 'venta') {
     for (let i = 0; i < historial.length; i++) {
       const compra = historial[i];
@@ -86,7 +86,7 @@ async function evaluarYOperar() {
         await hacerOrden('SELL', compra.cantidad.toFixed(2));
         capitalTotal += precio * compra.cantidad;
         historial[i].vendida = true;
-        await enviarTelegram(`🔴 Venta realizada a ${precio} con beneficio sobre compra a ${compra.precioCompra}`);
+        await enviarTelegram(`🔴 Venta a ${precio} (compra original a ${compra.precioCompra})`);
       }
     }
   }
