@@ -1,24 +1,29 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
-import cron from 'node-cron';
 import express from 'express';
+import cron from 'node-cron';
+import crypto from 'crypto';
 
 dotenv.config();
+
+const app = express();
+const port = process.env.PORT || 3000;
 
 const API_KEY = process.env.MEXC_API_KEY;
 const SECRET_KEY = process.env.MEXC_SECRET_KEY;
 const BASE_URL = 'https://api.mexc.com';
 const SYMBOL = 'XRPUSDT';
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-
 let capitalTotal = 180;
 let historial = [];
 let primeraCompraRealizada = false;
 
+// Ruta de estado
+app.get('/', (req, res) => {
+  res.send('✅ Bot XRP activo y funcionando.');
+});
+
 function getSignature(queryString) {
-  const crypto = require('crypto');
   return crypto.createHmac('sha256', SECRET_KEY).update(queryString).digest('hex');
 }
 
@@ -34,35 +39,25 @@ async function obtenerSaldoTotal() {
   const res = await axios.get(`${BASE_URL}/api/v3/account?${queryString}&signature=${signature}`, {
     headers: { 'X-MEXC-APIKEY': API_KEY }
   });
-  return res.data.balances;
-}
 
-async function enviarMensajeTelegram(mensaje) {
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
-  await axios.post(url, {
-    chat_id: TELEGRAM_CHAT_ID,
-    text: mensaje,
-  });
+  const usdt = res.data.balances.find(b => b.asset === 'USDT');
+  return parseFloat(usdt?.free || 0);
 }
 
 async function hacerCompraInicial() {
   if (primeraCompraRealizada) return;
-
   const precio = await obtenerPrecioActual();
   const cantidad = 15 / precio;
-
   const timestamp = Date.now();
   const queryString = `symbol=${SYMBOL}&side=BUY&type=MARKET&quantity=${cantidad.toFixed(2)}&timestamp=${timestamp}`;
   const signature = getSignature(queryString);
 
   await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
-    headers: { 'X-MEXC-APIKEY': API_KEY },
+    headers: { 'X-MEXC-APIKEY': API_KEY }
   });
 
-  historial.push({ tipo: 'compra', precioCompra: precio, cantidad, vendida: false });
+  historial.push({ tipo: 'compra', precioCompra: precio, cantidad });
   primeraCompraRealizada = true;
-  capitalTotal -= 15;
-
   console.log(`✅ Compra inicial realizada a ${precio}`);
 }
 
@@ -79,12 +74,11 @@ async function evaluarYOperar() {
     const signature = getSignature(queryString);
 
     await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
-      headers: { 'X-MEXC-APIKEY': API_KEY },
+      headers: { 'X-MEXC-APIKEY': API_KEY }
     });
 
-    historial.push({ tipo: 'compra', precioCompra: precioActual, cantidad, vendida: false });
+    historial.push({ tipo: 'compra', precioCompra: precioActual, cantidad });
     capitalTotal -= 15;
-
     console.log(`🟢 Compra aleatoria a ${precioActual}`);
   }
 
@@ -97,37 +91,28 @@ async function evaluarYOperar() {
         const signature = getSignature(queryString);
 
         await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
-          headers: { 'X-MEXC-APIKEY': API_KEY },
+          headers: { 'X-MEXC-APIKEY': API_KEY }
         });
 
-        historial[i].vendida = true;
         capitalTotal += precioActual * compra.cantidad;
+        historial[i].vendida = true;
+        console.log(`🔴 Venta ejecutada a ${precioActual} (ganancia ≥15%)`);
 
         const saldo = await obtenerSaldoTotal();
-        const totalUSDT = saldo.find(a => a.asset === 'USDT')?.free || '0';
-
-        const mensaje = `🔴 Venta completada a ${precioActual.toFixed(4)} con ganancia\n💰 Saldo USDT: ${totalUSDT}`;
-        await enviarMensajeTelegram(mensaje);
-
-        console.log(`🔴 Venta ejecutada a ${precioActual} (ganancia 15%)`);
+        console.log(`💰 Saldo USDT actual en MEXC: ${saldo}`);
       }
     }
   }
 }
 
-// 🕒 Ejecutar cada hora
+// Cron cada hora
 cron.schedule('0 * * * *', async () => {
   console.log('⏰ Ejecutando bot...');
   await hacerCompraInicial();
   await evaluarYOperar();
 });
 
-// 🌐 Servidor para Railway
-const app = express();
-const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => {
-  res.send('✅ XRP Bot funcionando correctamente.');
-});
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🌐 Servidor escuchando en http://0.0.0.0:${PORT}`);
+// Servidor para Railway
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🚀 Servidor activo en el puerto ${port}`);
 });
