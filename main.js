@@ -62,38 +62,40 @@ async function agregarDatosASheets(moneda, precio) {
     const sheets = google.sheets({ version: 'v4', auth });
     const timestamp = new Date().toISOString();
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.SHEET_ID,
-      range: 'Hoja1!A1',
-      valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: [[timestamp, moneda, precio]],
-      },
-    });
+// main.js import express from 'express'; import crypto from 'crypto'; import axios from 'axios'; import dotenv from 'dotenv';
 
-    console.log('📥 Precio añadido a Sheets:', precio, '⏰', timestamp);
-  } catch (error) {
-    console.error('❌ Error al añadir datos a Sheets:', error.message);
+dotenv.config();
+
+const app = express(); app.use(express.json());
+
+const PORT = process.env.PORT || 3000; const MEXC_API_KEY = process.env.MEXC_API_KEY; const MEXC_SECRET_KEY = process.env.MEXC_SECRET_KEY;
+
+const PAIRS = ['XRPUSDT', 'SHIBUSDT', 'FETUSDT', 'CGPTUSDT']; const BASE_URL = 'https://api.mexc.com';
+
+function sign(queryString) { return crypto.createHmac('sha256', MEXC_SECRET_KEY).update(queryString).digest('hex'); }
+
+async function placeOrder(symbol, side) { try { const timestamp = Date.now(); const params = symbol=${symbol}&side=${side}&type=MARKET&quantity=${getQuantity(symbol)}&timestamp=${timestamp}; const signature = sign(params); const finalParams = ${params}&signature=${signature};
+
+const response = await axios.post(`${BASE_URL}/api/v3/order?${finalParams}`, {}, {
+  headers: {
+    'X-MEXC-APIKEY': MEXC_API_KEY,
+    'Content-Type': 'application/json'
   }
-}
+});
 
-// Estrategia de compra/venta
-async function estrategiaAutomatica() {
-  try {
-    console.log('🚀 Ejecutando estrategia automática...');
-    const tokens = ['SHIBUSDT', 'XRPUSDT', 'FETUSDT', 'CGPTUSDT'];
+console.log(`✅ ${side} order placed for ${symbol}`, response.data);
 
-    for (let symbol of tokens) {
-      const response = await axios.get(`https://api.mexc.com/api/v3/ticker/price?symbol=${symbol}`);
-      const price = parseFloat(response.data.price);
-      console.log(`📊 Precio de ${symbol}: ${price}`);
+} catch (error) { console.error(❌ Error placing ${side} order for ${symbol}:, error?.response?.data || error.message); } }
 
-      await agregarDatosASheets(symbol, price);
+function getQuantity(symbol) { switch (symbol) { case 'XRPUSDT': return 18;     // Ajustar cantidad según balance case 'SHIBUSDT': return 700000; case 'FETUSDT': return 48; case 'CGPTUSDT': return 30; default: return 0; } }
 
-      if (price < 0.00002) {
-        await placeOrder(symbol, 'BUY', 200000);
-      } else if (price > 0.00003) {
-        await placeOrder(symbol, 'SELL', 200000);
+app.post('/webhook', async (req, res) => { const { symbol, action } = req.body; if (!PAIRS.includes(symbol) || !['BUY', 'SELL'].includes(action)) { return res.status(400).send('Invalid payload'); } await placeOrder(symbol, action); res.send('Order executed'); });
+
+app.get('/', (req, res) => { res.send('✅ Bot activo y escuchando TradingView'); });
+
+app.listen(PORT, '0.0.0.0', () => { console.log(🚀 Servidor corriendo en el puerto ${PORT}); });
+
+200000);
       }
     }
   } catch (error) {
