@@ -1,38 +1,77 @@
-// main.js definitivo sin Google Sheets ni Telegram
-
-import express from 'express'; import dotenv from 'dotenv'; import axios from 'axios'; import crypto from 'crypto'; import cron from 'node-cron';
+// main.js para bot XRP con lógica de compra inicial + operaciones aleatorias limitadas
+import axios from 'axios';
+import dotenv from 'dotenv';
+import cron from 'node-cron';
 
 dotenv.config();
 
-const app = express(); const port = process.env.PORT || 3000;
+const API_KEY = process.env.MEXC_API_KEY;
+const SECRET_KEY = process.env.MEXC_SECRET_KEY;
+const BASE_URL = 'https://api.mexc.com';
+const SYMBOL = 'XRPUSDT';
 
-const MEXC_API_KEY = process.env.MEXC_KEY; const MEXC_SECRET_KEY = process.env.MEXC_SECRET;
+let capitalTotal = 180;
+let historial = [];
+let primeraCompraRealizada = false;
 
-const pares = ['SHIBUSDT', 'XRPUSDT', 'FETUSDT', 'CGPTUSDT'];
+function getSignature(queryString) {
+  const crypto = await import('crypto');
+  return crypto.createHmac('sha256', SECRET_KEY).update(queryString).digest('hex');
+}
 
-app.use(express.json());
+async function obtenerPrecioActual() {
+  const res = await axios.get(`${BASE_URL}/api/v3/ticker/price?symbol=${SYMBOL}`);
+  return parseFloat(res.data.price);
+}
 
-// Respuesta de estado app.get('/', (req, res) => { res.send('✅ Bot MEXC funcionando.'); });
+async function hacerCompraInicial() {
+  if (primeraCompraRealizada) return;
+  const precio = await obtenerPrecioActual();
+  const cantidad = 15 / precio;
+  const queryString = `symbol=${SYMBOL}&side=BUY&type=LIMIT&timeInForce=GTC&quantity=${cantidad.toFixed(2)}&price=${precio.toFixed(4)}&timestamp=${Date.now()}`;
+  const signature = getSignature(queryString);
+  await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
+    headers: { 'X-MEXC-APIKEY': API_KEY },
+  });
+  historial.push({ tipo: 'compra', precioCompra: precio, cantidad });
+  primeraCompraRealizada = true;
+  console.log(`✅ Compra inicial realizada a ${precio}`);
+}
 
-// Función para generar firma function firmar(query_string, secretKey) { return crypto.createHmac('sha256', secretKey).update(query_string).digest('hex'); }
+async function evaluarYOperar() {
+  if (!primeraCompraRealizada) return;
+  const precioActual = await obtenerPrecioActual();
+  const decision = Math.random() > 0.5 ? 'compra' : 'venta';
 
-// Ejecutar compra o venta market async function ejecutarOrden(tipo, simbolo) { const timestamp = Date.now(); const quantity = await calcularCantidad(simbolo);
+  if (decision === 'compra' && capitalTotal >= 15) {
+    const cantidad = 15 / precioActual;
+    const queryString = `symbol=${SYMBOL}&side=BUY&type=LIMIT&timeInForce=GTC&quantity=${cantidad.toFixed(2)}&price=${precioActual.toFixed(4)}&timestamp=${Date.now()}`;
+    const signature = getSignature(queryString);
+    await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
+      headers: { 'X-MEXC-APIKEY': API_KEY },
+    });
+    historial.push({ tipo: 'compra', precioCompra: precioActual, cantidad });
+    capitalTotal -= 15;
+    console.log(`🟢 Compra aleatoria a ${precioActual}`);
+  } else if (decision === 'venta') {
+    for (let i = 0; i < historial.length; i++) {
+      const compra = historial[i];
+      if (!compra.vendida && precioActual >= compra.precioCompra * 1.15) {
+        const queryString = `symbol=${SYMBOL}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${compra.cantidad.toFixed(2)}&price=${precioActual.toFixed(4)}&timestamp=${Date.now()}`;
+        const signature = getSignature(queryString);
+        await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
+          headers: { 'X-MEXC-APIKEY': API_KEY },
+        });
+        capitalTotal += precioActual * compra.cantidad;
+        historial[i].vendida = true;
+        console.log(`🔴 Venta ejecutada a ${precioActual} (ganancia 15%)`);
+      }
+    }
+  }
+}
 
-const params = symbol=${simbolo}&side=${tipo.toUpperCase()}&type=MARKET&quantity=${quantity}&timestamp=${timestamp}; const signature = firmar(params, MEXC_SECRET_KEY);
-
-try { const response = await axios.post( https://api.mexc.com/api/v3/order?${params}&signature=${signature}, {}, { headers: { 'X-MEXC-APIKEY': MEXC_API_KEY, }, } ); console.log(✅ Orden ${tipo} ejecutada para ${simbolo}:, response.data); } catch (error) { console.error(❌ Error al ejecutar orden ${tipo} para ${simbolo}:, error.response?.data || error.message); } }
-
-// Calcular cantidad para operar 40 USDT por par (aproximadamente) async function calcularCantidad(simbolo) { try { const { data } = await axios.get(https://api.mexc.com/api/v3/ticker/price?symbol=${simbolo}); const precio = parseFloat(data.price); const cantidad = (40 / precio).toFixed(0); return cantidad; } catch (error) { console.error(❌ Error obteniendo precio de ${simbolo}:, error.message); return 0; } }
-
-// Ruta webhook para TradingView app.post('/webhook', async (req, res) => { const { action, symbol } = req.body;
-
-if (!action || !symbol) { return res.status(400).send('Faltan campos obligatorios.'); }
-
-if (!pares.includes(symbol)) { return res.status(400).send('Par no permitido.'); }
-
-if (action.toUpperCase() === 'BUY' || action.toUpperCase() === 'SELL') { await ejecutarOrden(action.toUpperCase(), symbol); res.send(✅ Orden ${action} recibida para ${symbol}); } else { res.status(400).send('Acción no válida'); } });
-
-// Cron opcional: ejecutar automáticamente cada hora cron.schedule('0 * * * *', async () => { console.log('⏰ Ejecutando revisión automática...'); for (const simbolo of pares) { // lógica para decidir si comprar/vender puede ir aquí } });
-
-// Iniciar servidor app.listen(port, '0.0.0.0', () => { console.log(🚀 Bot corriendo en puerto ${port}); });
-
+cron.schedule('0 * * * *', async () => {
+  console.log('⏰ Ejecutando bot...');
+  await hacerCompraInicial();
+  await evaluarYOperar();
+});
