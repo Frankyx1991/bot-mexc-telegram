@@ -1,7 +1,7 @@
-// main.js para bot XRP con lógica de compra inicial + operaciones aleatorias limitadas
 import axios from 'axios';
 import dotenv from 'dotenv';
 import cron from 'node-cron';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -15,7 +15,6 @@ let historial = [];
 let primeraCompraRealizada = false;
 
 function getSignature(queryString) {
-  const crypto = await import('crypto');
   return crypto.createHmac('sha256', SECRET_KEY).update(queryString).digest('hex');
 }
 
@@ -26,50 +25,65 @@ async function obtenerPrecioActual() {
 
 async function hacerCompraInicial() {
   if (primeraCompraRealizada) return;
+
   const precio = await obtenerPrecioActual();
   const cantidad = 15 / precio;
-  const queryString = `symbol=${SYMBOL}&side=BUY&type=LIMIT&timeInForce=GTC&quantity=${cantidad.toFixed(2)}&price=${precio.toFixed(4)}&timestamp=${Date.now()}`;
+  const timestamp = Date.now();
+  const queryString = `symbol=${SYMBOL}&side=BUY&type=LIMIT&timeInForce=GTC&quantity=${cantidad.toFixed(2)}&price=${precio.toFixed(4)}&timestamp=${timestamp}`;
   const signature = getSignature(queryString);
+
   await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
-    headers: { 'X-MEXC-APIKEY': API_KEY },
+    headers: { 'X-MEXC-APIKEY': API_KEY }
   });
+
   historial.push({ tipo: 'compra', precioCompra: precio, cantidad });
   primeraCompraRealizada = true;
+
   console.log(`✅ Compra inicial realizada a ${precio}`);
 }
 
 async function evaluarYOperar() {
   if (!primeraCompraRealizada) return;
+
   const precioActual = await obtenerPrecioActual();
   const decision = Math.random() > 0.5 ? 'compra' : 'venta';
 
   if (decision === 'compra' && capitalTotal >= 15) {
     const cantidad = 15 / precioActual;
-    const queryString = `symbol=${SYMBOL}&side=BUY&type=LIMIT&timeInForce=GTC&quantity=${cantidad.toFixed(2)}&price=${precioActual.toFixed(4)}&timestamp=${Date.now()}`;
+    const timestamp = Date.now();
+    const queryString = `symbol=${SYMBOL}&side=BUY&type=LIMIT&timeInForce=GTC&quantity=${cantidad.toFixed(2)}&price=${precioActual.toFixed(4)}&timestamp=${timestamp}`;
     const signature = getSignature(queryString);
+
     await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
-      headers: { 'X-MEXC-APIKEY': API_KEY },
+      headers: { 'X-MEXC-APIKEY': API_KEY }
     });
+
     historial.push({ tipo: 'compra', precioCompra: precioActual, cantidad });
     capitalTotal -= 15;
+
     console.log(`🟢 Compra aleatoria a ${precioActual}`);
   } else if (decision === 'venta') {
     for (let i = 0; i < historial.length; i++) {
       const compra = historial[i];
       if (!compra.vendida && precioActual >= compra.precioCompra * 1.15) {
-        const queryString = `symbol=${SYMBOL}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${compra.cantidad.toFixed(2)}&price=${precioActual.toFixed(4)}&timestamp=${Date.now()}`;
+        const timestamp = Date.now();
+        const queryString = `symbol=${SYMBOL}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${compra.cantidad.toFixed(2)}&price=${precioActual.toFixed(4)}&timestamp=${timestamp}`;
         const signature = getSignature(queryString);
+
         await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
-          headers: { 'X-MEXC-APIKEY': API_KEY },
+          headers: { 'X-MEXC-APIKEY': API_KEY }
         });
+
         capitalTotal += precioActual * compra.cantidad;
         historial[i].vendida = true;
+
         console.log(`🔴 Venta ejecutada a ${precioActual} (ganancia 15%)`);
       }
     }
   }
 }
 
+// Ejecutar cada hora
 cron.schedule('0 * * * *', async () => {
   console.log('⏰ Ejecutando bot...');
   await hacerCompraInicial();
