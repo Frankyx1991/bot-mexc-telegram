@@ -1,30 +1,46 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
-import express from 'express';
 import cron from 'node-cron';
+import express from 'express';
 import crypto from 'crypto';
 
 dotenv.config();
-
-const app = express();
-const port = process.env.PORT || 3000;
 
 const API_KEY = process.env.MEXC_API_KEY;
 const SECRET_KEY = process.env.MEXC_SECRET_KEY;
 const BASE_URL = 'https://api.mexc.com';
 const SYMBOL = 'XRPUSDT';
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 let capitalTotal = 180;
 let historial = [];
 let primeraCompraRealizada = false;
 
-// Ruta de estado
+const app = express();
+const port = process.env.PORT || 3000;
+
 app.get('/', (req, res) => {
-  res.send('✅ Bot XRP activo y funcionando.');
+  res.send('✅ Bot activo y funcionando.');
+});
+
+app.listen(port, () => {
+  console.log(`🌐 Servidor escuchando en el puerto ${port}`);
 });
 
 function getSignature(queryString) {
   return crypto.createHmac('sha256', SECRET_KEY).update(queryString).digest('hex');
+}
+
+async function enviarTelegram(mensaje) {
+  try {
+    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      chat_id: CHAT_ID,
+      text: mensaje,
+    });
+  } catch (err) {
+    console.error('❌ Error al enviar mensaje a Telegram:', err.message);
+  }
 }
 
 async function obtenerPrecioActual() {
@@ -32,87 +48,52 @@ async function obtenerPrecioActual() {
   return parseFloat(res.data.price);
 }
 
-async function obtenerSaldoTotal() {
+async function hacerOrden(side, quantity) {
   const timestamp = Date.now();
-  const queryString = `timestamp=${timestamp}`;
+  const queryString = `symbol=${SYMBOL}&side=${side}&type=MARKET&quantity=${quantity}&timestamp=${timestamp}`;
   const signature = getSignature(queryString);
-  const res = await axios.get(`${BASE_URL}/api/v3/account?${queryString}&signature=${signature}`, {
-    headers: { 'X-MEXC-APIKEY': API_KEY }
-  });
-
-  const usdt = res.data.balances.find(b => b.asset === 'USDT');
-  return parseFloat(usdt?.free || 0);
+  const url = `${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`;
+  const res = await axios.post(url, {}, { headers: { 'X-MEXC-APIKEY': API_KEY } });
+  return res.data;
 }
 
 async function hacerCompraInicial() {
   if (primeraCompraRealizada) return;
   const precio = await obtenerPrecioActual();
-  const cantidad = 15 / precio;
-  const timestamp = Date.now();
-  const queryString = `symbol=${SYMBOL}&side=BUY&type=MARKET&quantity=${cantidad.toFixed(2)}&timestamp=${timestamp}`;
-  const signature = getSignature(queryString);
-
-  await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
-    headers: { 'X-MEXC-APIKEY': API_KEY }
-  });
-
-  historial.push({ tipo: 'compra', precioCompra: precio, cantidad });
+  const cantidad = (15 / precio).toFixed(2);
+  const orden = await hacerOrden('BUY', cantidad);
+  historial.push({ tipo: 'compra', precioCompra: precio, cantidad: parseFloat(cantidad), vendida: false });
   primeraCompraRealizada = true;
-  console.log(`✅ Compra inicial realizada a ${precio}`);
+  await enviarTelegram(`✅ Compra inicial realizada a ${precio}`);
 }
 
 async function evaluarYOperar() {
   if (!primeraCompraRealizada) return;
 
-  const precioActual = await obtenerPrecioActual();
+  const precio = await obtenerPrecioActual();
   const decision = Math.random() > 0.5 ? 'compra' : 'venta';
 
   if (decision === 'compra' && capitalTotal >= 15) {
-    const cantidad = 15 / precioActual;
-    const timestamp = Date.now();
-    const queryString = `symbol=${SYMBOL}&side=BUY&type=MARKET&quantity=${cantidad.toFixed(2)}&timestamp=${timestamp}`;
-    const signature = getSignature(queryString);
-
-    await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
-      headers: { 'X-MEXC-APIKEY': API_KEY }
-    });
-
-    historial.push({ tipo: 'compra', precioCompra: precioActual, cantidad });
+    const cantidad = (15 / precio).toFixed(2);
+    await hacerOrden('BUY', cantidad);
+    historial.push({ tipo: 'compra', precioCompra: precio, cantidad: parseFloat(cantidad), vendida: false });
     capitalTotal -= 15;
-    console.log(`🟢 Compra aleatoria a ${precioActual}`);
-  }
-
-  if (decision === 'venta') {
+    await enviarTelegram(`🟢 Compra aleatoria realizada a ${precio}`);
+  } else if (decision === 'venta') {
     for (let i = 0; i < historial.length; i++) {
       const compra = historial[i];
-      if (!compra.vendida && precioActual >= compra.precioCompra * 1.15) {
-        const timestamp = Date.now();
-        const queryString = `symbol=${SYMBOL}&side=SELL&type=MARKET&quantity=${compra.cantidad.toFixed(2)}&timestamp=${timestamp}`;
-        const signature = getSignature(queryString);
-
-        await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
-          headers: { 'X-MEXC-APIKEY': API_KEY }
-        });
-
-        capitalTotal += precioActual * compra.cantidad;
+      if (!compra.vendida && precio >= compra.precioCompra * 1.15) {
+        await hacerOrden('SELL', compra.cantidad.toFixed(2));
+        capitalTotal += precio * compra.cantidad;
         historial[i].vendida = true;
-        console.log(`🔴 Venta ejecutada a ${precioActual} (ganancia ≥15%)`);
-
-        const saldo = await obtenerSaldoTotal();
-        console.log(`💰 Saldo USDT actual en MEXC: ${saldo}`);
+        await enviarTelegram(`🔴 Venta realizada a ${precio} con beneficio sobre compra a ${compra.precioCompra}`);
       }
     }
   }
 }
 
-// Cron cada hora
 cron.schedule('0 * * * *', async () => {
   console.log('⏰ Ejecutando bot...');
   await hacerCompraInicial();
   await evaluarYOperar();
-});
-
-// Servidor para Railway
-app.listen(port, '0.0.0.0', () => {
-  console.log(`🚀 Servidor activo en el puerto ${port}`);
 });
