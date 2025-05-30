@@ -1,7 +1,7 @@
 {
   "name": "xrp-bot",
   "version": "1.0.0",
-  "description": "Bot de trading automático para XRP usando MEXC y Telegram",
+  "description": "Bot automático para operar XRP/USDT en MEXC",
   "main": "main.js",
   "type": "module",
   "scripts": {
