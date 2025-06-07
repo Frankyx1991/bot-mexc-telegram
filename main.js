@@ -1,13 +1,12 @@
-// main.js actualizado con simulación inteligente tipo Perplexity
 import axios from 'axios';
 import dotenv from 'dotenv';
-import cron from 'node-cron';
 import express from 'express';
+import cron from 'node-cron';
+import crypto from 'crypto';
 
 dotenv.config();
-
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 const API_KEY = process.env.MEXC_API_KEY;
 const SECRET_KEY = process.env.MEXC_SECRET_KEY;
@@ -18,8 +17,11 @@ let capitalTotal = 180;
 let historial = [];
 let primeraCompraRealizada = false;
 
-function getSignature(queryString) {
-  const crypto = require('crypto');
+app.get('/', (_, res) => {
+  res.send('✅ Bot activo');
+});
+
+function firmar(queryString) {
   return crypto.createHmac('sha256', SECRET_KEY).update(queryString).digest('hex');
 }
 
@@ -28,77 +30,75 @@ async function obtenerPrecioActual() {
   return parseFloat(res.data.price);
 }
 
-function consultaPerplexitySimulada(tipo, precio) {
-  // Simulación básica de IA
-  if (tipo === 'compra' && precio < 2.3) return { ok: true, mensaje: '✅ Buen momento para comprar según IA' };
-  if (tipo === 'venta' && precio > 2.5) return { ok: true, mensaje: '📈 Buen momento para vender según IA' };
-  return { ok: false, mensaje: '⏳ Mejor esperar, IA no recomienda esta operación ahora.' };
+function decisionIA(tipo, precio) {
+  const probabilidad = Math.random();
+  if (tipo === 'compra') return probabilidad > 0.4; // 60% chance de comprar si es buena señal
+  if (tipo === 'venta') return probabilidad > 0.5; // 50% chance de vender si supera el 15%
+  return false;
+}
+
+async function hacerOrden(tipo, cantidad) {
+  const side = tipo.toUpperCase();
+  const timestamp = Date.now();
+  const query = `symbol=${SYMBOL}&side=${side}&type=MARKET&quantity=${cantidad}&timestamp=${timestamp}`;
+  const signature = firmar(query);
+  const url = `${BASE_URL}/api/v3/order?${query}&signature=${signature}`;
+
+  await axios.post(url, {}, {
+    headers: { 'X-MEXC-APIKEY': API_KEY },
+  });
+
+  console.log(`📈 Orden ${tipo} ejecutada con ${cantidad.toFixed(2)} XRP`);
 }
 
 async function hacerCompraInicial() {
   if (primeraCompraRealizada) return;
   const precio = await obtenerPrecioActual();
-  const decision = consultaPerplexitySimulada('compra', precio);
-  console.log(decision.mensaje);
-  if (!decision.ok) return;
-
   const cantidad = 15 / precio;
-  const queryString = `symbol=${SYMBOL}&side=BUY&type=MARKET&quantity=${cantidad.toFixed(2)}&timestamp=${Date.now()}`;
-  const signature = getSignature(queryString);
-  await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
-    headers: { 'X-MEXC-APIKEY': API_KEY },
-  });
-  historial.push({ tipo: 'compra', precioCompra: precio, cantidad });
-  primeraCompraRealizada = true;
-  console.log(`✅ Compra inicial realizada a ${precio}`);
+
+  if (decisionIA('compra', precio)) {
+    await hacerOrden('buy', cantidad);
+    historial.push({ precioCompra: precio, cantidad, vendida: false });
+    capitalTotal -= 15;
+    primeraCompraRealizada = true;
+    console.log(`✅ Compra inicial realizada a ${precio}`);
+  } else {
+    console.log(`⏳ IA decidió NO comprar (compra inicial)`);
+  }
 }
 
 async function evaluarYOperar() {
-  if (!primeraCompraRealizada) return;
-  const precioActual = await obtenerPrecioActual();
-  const decisionAleatoria = Math.random() > 0.5 ? 'compra' : 'venta';
+  const precio = await obtenerPrecioActual();
 
-  const decisionIA = consultaPerplexitySimulada(decisionAleatoria, precioActual);
-  console.log(decisionIA.mensaje);
-  if (!decisionIA.ok) return;
-
-  if (decisionAleatoria === 'compra' && capitalTotal >= 15) {
-    const cantidad = 15 / precioActual;
-    const queryString = `symbol=${SYMBOL}&side=BUY&type=MARKET&quantity=${cantidad.toFixed(2)}&timestamp=${Date.now()}`;
-    const signature = getSignature(queryString);
-    await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
-      headers: { 'X-MEXC-APIKEY': API_KEY },
-    });
-    historial.push({ tipo: 'compra', precioCompra: precioActual, cantidad });
-    capitalTotal -= 15;
-    console.log(`🟢 Compra aleatoria a ${precioActual}`);
-  } else if (decisionAleatoria === 'venta') {
-    for (let i = 0; i < historial.length; i++) {
-      const compra = historial[i];
-      if (!compra.vendida && precioActual >= compra.precioCompra * 1.15) {
-        const queryString = `symbol=${SYMBOL}&side=SELL&type=MARKET&quantity=${compra.cantidad.toFixed(2)}&timestamp=${Date.now()}`;
-        const signature = getSignature(queryString);
-        await axios.post(`${BASE_URL}/api/v3/order?${queryString}&signature=${signature}`, {}, {
-          headers: { 'X-MEXC-APIKEY': API_KEY },
-        });
-        capitalTotal += precioActual * compra.cantidad;
-        historial[i].vendida = true;
-        console.log(`🔴 Venta ejecutada a ${precioActual} con ganancia (15%)`);
-      }
+  // Simulación de venta
+  for (let i = 0; i < historial.length; i++) {
+    const c = historial[i];
+    const margen = c.precioCompra * 1.15;
+    if (!c.vendida && precio >= margen && decisionIA('venta', precio)) {
+      await hacerOrden('sell', c.cantidad);
+      const ganancia = precio * c.cantidad;
+      capitalTotal += ganancia;
+      historial[i].vendida = true;
+      console.log(`🔴 Venta ejecutada a ${precio} con ganancia`);
     }
+  }
+
+  // Compra aleatoria si hay saldo
+  if (capitalTotal >= 15 && decisionIA('compra', precio)) {
+    const cantidad = 15 / precio;
+    await hacerOrden('buy', cantidad);
+    historial.push({ precioCompra: precio, cantidad, vendida: false });
+    capitalTotal -= 15;
+    console.log(`🟢 Compra aleatoria ejecutada a ${precio}`);
   }
 }
 
 cron.schedule('0 * * * *', async () => {
-  console.log('⏰ Ejecutando bot...');
+  console.log('⏰ Ejecutando bot inteligente...');
   await hacerCompraInicial();
   await evaluarYOperar();
 });
 
-app.get('/', (req, res) => {
-  res.send('🟢 Bot XRP ejecutándose con IA simulada Perplexity.');
-});
-
-app.listen(port, () => {
-  console.log(`🚀 Servidor en puerto ${port}`);
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor escuchando en el puerto ${PORT}`);
 });
