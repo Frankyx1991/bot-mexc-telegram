@@ -1,8 +1,8 @@
-import axios from 'axios';
-import dotenv from 'dotenv';
-import express from 'express';
-import cron from 'node-cron';
-import crypto from 'crypto';
+const axios = require('axios');
+const dotenv = require('dotenv');
+const express = require('express');
+const cron = require('node-cron');
+const crypto = require('crypto');
 
 dotenv.config();
 const app = express();
@@ -32,8 +32,8 @@ async function obtenerPrecioActual() {
 
 function decisionIA(tipo, precio) {
   const probabilidad = Math.random();
-  if (tipo === 'compra') return probabilidad > 0.4; // 60% chance de comprar si es buena señal
-  if (tipo === 'venta') return probabilidad > 0.5; // 50% chance de vender si supera el 15%
+  if (tipo === 'compra') return probabilidad > 0.4;
+  if (tipo === 'venta') return probabilidad > 0.5;
   return false;
 }
 
@@ -70,7 +70,6 @@ async function hacerCompraInicial() {
 async function evaluarYOperar() {
   const precio = await obtenerPrecioActual();
 
-  // Simulación de venta
   for (let i = 0; i < historial.length; i++) {
     const c = historial[i];
     const margen = c.precioCompra * 1.15;
@@ -83,7 +82,6 @@ async function evaluarYOperar() {
     }
   }
 
-  // Compra aleatoria si hay saldo
   if (capitalTotal >= 15 && decisionIA('compra', precio)) {
     const cantidad = 15 / precio;
     await hacerOrden('buy', cantidad);
