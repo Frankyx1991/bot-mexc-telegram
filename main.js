@@ -1,27 +1,19 @@
 const axios = require('axios');
-const dotenv = require('dotenv');
-const express = require('express');
 const cron = require('node-cron');
-const crypto = require('crypto');
-
-dotenv.config();
-const app = express();
-const PORT = process.env.PORT || 8080;
+const express = require('express');
+require('dotenv').config();
 
 const API_KEY = process.env.MEXC_API_KEY;
 const SECRET_KEY = process.env.MEXC_SECRET_KEY;
-const BASE_URL = 'https://api.mexc.com';
 const SYMBOL = 'XRPUSDT';
+const BASE_URL = 'https://api.mexc.com';
 
-let capitalTotal = 180;
+let primeraCompra = false;
 let historial = [];
-let primeraCompraRealizada = false;
+let capitalMaximo = 180;
 
-app.get('/', (_, res) => {
-  res.send('✅ Bot activo');
-});
-
-function firmar(queryString) {
+function getSignature(queryString) {
+  const crypto = require('crypto');
   return crypto.createHmac('sha256', SECRET_KEY).update(queryString).digest('hex');
 }
 
@@ -30,73 +22,61 @@ async function obtenerPrecioActual() {
   return parseFloat(res.data.price);
 }
 
-function decisionIA(tipo, precio) {
-  const probabilidad = Math.random();
-  if (tipo === 'compra') return probabilidad > 0.4;
-  if (tipo === 'venta') return probabilidad > 0.5;
-  return false;
-}
-
-async function hacerOrden(tipo, cantidad) {
-  const side = tipo.toUpperCase();
+async function ejecutarOrdenMarket(side, quantity) {
   const timestamp = Date.now();
-  const query = `symbol=${SYMBOL}&side=${side}&type=MARKET&quantity=${cantidad}&timestamp=${timestamp}`;
-  const signature = firmar(query);
+  const query = `symbol=${SYMBOL}&side=${side}&type=MARKET&quantity=${quantity}&timestamp=${timestamp}`;
+  const signature = getSignature(query);
   const url = `${BASE_URL}/api/v3/order?${query}&signature=${signature}`;
-
-  await axios.post(url, {}, {
-    headers: { 'X-MEXC-APIKEY': API_KEY },
+  const res = await axios.post(url, {}, {
+    headers: { 'X-MEXC-APIKEY': API_KEY }
   });
-
-  console.log(`📈 Orden ${tipo} ejecutada con ${cantidad.toFixed(2)} XRP`);
+  return res.data;
 }
 
 async function hacerCompraInicial() {
-  if (primeraCompraRealizada) return;
+  if (primeraCompra) return;
   const precio = await obtenerPrecioActual();
-  const cantidad = 15 / precio;
-
-  if (decisionIA('compra', precio)) {
-    await hacerOrden('buy', cantidad);
-    historial.push({ precioCompra: precio, cantidad, vendida: false });
-    capitalTotal -= 15;
-    primeraCompraRealizada = true;
-    console.log(`✅ Compra inicial realizada a ${precio}`);
-  } else {
-    console.log(`⏳ IA decidió NO comprar (compra inicial)`);
-  }
+  const cantidad = +(15 / precio).toFixed(2);
+  const orden = await ejecutarOrdenMarket('BUY', cantidad);
+  historial.push({ precio, cantidad, vendida: false });
+  primeraCompra = true;
+  console.log(`✅ Compra inicial realizada: ${cantidad} XRP a ${precio} USDT`);
 }
 
 async function evaluarYOperar() {
-  const precio = await obtenerPrecioActual();
+  const precioActual = await obtenerPrecioActual();
+  const decision = Math.random() > 0.5 ? 'compra' : 'venta';
 
-  for (let i = 0; i < historial.length; i++) {
-    const c = historial[i];
-    const margen = c.precioCompra * 1.15;
-    if (!c.vendida && precio >= margen && decisionIA('venta', precio)) {
-      await hacerOrden('sell', c.cantidad);
-      const ganancia = precio * c.cantidad;
-      capitalTotal += ganancia;
-      historial[i].vendida = true;
-      console.log(`🔴 Venta ejecutada a ${precio} con ganancia`);
-    }
+  if (decision === 'compra' && capitalMaximo >= 15) {
+    const cantidad = +(15 / precioActual).toFixed(2);
+    await ejecutarOrdenMarket('BUY', cantidad);
+    historial.push({ precio: precioActual, cantidad, vendida: false });
+    capitalMaximo -= 15;
+    console.log(`🟢 Compra aleatoria de ${cantidad} XRP a ${precioActual} USDT`);
   }
 
-  if (capitalTotal >= 15 && decisionIA('compra', precio)) {
-    const cantidad = 15 / precio;
-    await hacerOrden('buy', cantidad);
-    historial.push({ precioCompra: precio, cantidad, vendida: false });
-    capitalTotal -= 15;
-    console.log(`🟢 Compra aleatoria ejecutada a ${precio}`);
+  if (decision === 'venta') {
+    for (let trans of historial) {
+      if (!trans.vendida && precioActual >= trans.precio * 1.15) {
+        await ejecutarOrdenMarket('SELL', trans.cantidad);
+        trans.vendida = true;
+        capitalMaximo += precioActual * trans.cantidad;
+        console.log(`🔴 Venta con +15% a ${precioActual} USDT | Saldo estimado: ${capitalMaximo.toFixed(2)} USDT`);
+      }
+    }
   }
 }
 
-cron.schedule('0 * * * *', async () => {
-  console.log('⏰ Ejecutando bot inteligente...');
+cron.schedule('*/30 * * * *', async () => {
+  console.log('⏰ Revisión automática...');
   await hacerCompraInicial();
   await evaluarYOperar();
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor escuchando en el puerto ${PORT}`);
-});
+// Webhook y keep-alive
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => res.send('🟢 XRP Bot activo y esperando señales...'));
+
+app.listen(PORT, () => console.log(`🌐 Servidor corriendo en puerto ${PORT}`));
