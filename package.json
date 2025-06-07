@@ -1,7 +1,7 @@
 {
   "name": "xrp-bot",
   "version": "1.0.0",
-  "description": "Bot inteligente para operar XRP con MEXC y lógica IA",
+  "description": "Bot inteligente para operar XRP con MEXC y señales de TradingView",
   "main": "main.js",
   "scripts": {
     "start": "node main.js"
@@ -10,6 +10,7 @@
     "axios": "^1.6.7",
     "cron": "^2.3.1",
     "dotenv": "^16.3.1",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "node-cron": "^3.0.2"
   }
 }
